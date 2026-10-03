@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flipkart Review Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="stars" aria-hidden="true">
+    <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+  </div>
+
+  <main class="chat">
+    <header class="chat-head">
+      <div class="logo" aria-hidden="true">F</div>
+      <div>
+        <h1>Review Assistant</h1>
+        <p>Ask about any product. Answers come from real customer reviews.</p>
+      </div>
+    </header>
+
+    <section id="messages" class="messages" aria-live="polite"></section>
+
+    <div class="chips" id="chips">
+      <button type="button">Best budget headphones?</button>
+      <button type="button">Is the battery life good?</button>
+      <button type="button">Any common complaints?</button>
+    </div>
+
+    <form id="form" class="composer" autocomplete="off">
+      <input id="input" type="text" placeholder="Ask about a product" aria-label="Your question" required>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </main>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+    const chips = document.getElementById("chips");
+    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function addMessage(text, who) {
+      const el = document.createElement("div");
+      el.className = "msg " + who;
+      el.textContent = text;
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+      return el;
+    }
+
+    function typing() {
+      const el = document.createElement("div");
+      el.className = "msg bot typing";
+      el.innerHTML = "<i></i><i></i><i></i>";
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+      return el;
+    }
+
+    // Reveal the bot's answer word by word
+    async function reveal(el, text) {
+      if (reduceMotion) { el.textContent = text; return; }
+      el.textContent = "";
+      for (const word of text.split(" ")) {
+        el.textContent += word + " ";
+        messages.scrollTop = messages.scrollHeight;
+        await new Promise(r => setTimeout(r, 25));
+      }
+    }
+
+    async function ask(question) {
+      chips.classList.add("hide");
+      addMessage(question, "user");
+      send.disabled = true;
+      const dots = typing();
+      try {
+        const res = await fetch("/get", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: question, session_id: sessionId })
+        });
+        const data = await res.json();
+        dots.remove();
+        const el = addMessage("", "bot");
+        await reveal(el, res.ok ? data.answer : (data.error || "Something went wrong. Try again."));
+      } catch (e) {
+        dots.remove();
+        addMessage("Can't reach the server. Check that the app is running and try again.", "bot error");
+      } finally {
+        send.disabled = false;
+        input.focus();
+      }
+    }
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (!q) return;
+      input.value = "";
+      ask(q);
+    });
+
+    chips.addEventListener("click", e => {
+      if (e.target.tagName === "BUTTON") ask(e.target.textContent);
+    });
+
+    // Greeting
+    setTimeout(() => {
+      const el = addMessage("", "bot");
+      reveal(el, "Hi! Tell me which product you're considering and I'll summarise what buyers say about it.");
+    }, reduceMotion ? 0 : 900);
+  </script>
+</body>
+</html>
